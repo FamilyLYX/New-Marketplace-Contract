@@ -6,6 +6,7 @@ import { ILSP8IdentifiableDigitalAsset } from "@lukso/lsp-smart-contracts/contra
 import { LSP8MarketplaceOffer } from "./LSP8MarketplaceOffer.sol";
 import { LSP8MarketplacePrice } from "./LSP8MarketplacePrice.sol";
 import { LSP8MarketplaceTrade } from "./LSP8MarketplaceTrade.sol";
+import {TransferHelper} from './libraries/transferHelpers.sol';
 
 /**
  * @title LSP8Marketplace contract
@@ -178,7 +179,8 @@ contract LSP8Marketplace is LSP8MarketplaceOffer, LSP8MarketplacePrice, LSP8Mark
         _removeLSP8Prices(LSP8Address, tokenId);
         _removeLSP8Sale(LSP8Address, tokenId);
         _transferLSP8(LSP8Address, LSP8Owner, msg.sender, tokenId, false, 1);
-        LSP8Owner.transfer(amount);
+        TransferHelper.safeTransferLYX(LSP8Owner, amount);
+        // LSP8Owner.transfer(amount);
     }
 
     /**

@@ -5,10 +5,11 @@ pragma solidity ^0.8.0;
 import { ILSP8IdentifiableDigitalAsset } from "@lukso/lsp-smart-contracts/contracts/LSP8IdentifiableDigitalAsset/ILSP8IdentifiableDigitalAsset.sol";
 import { ILSP7DigitalAsset } from "@lukso/lsp-smart-contracts/contracts/LSP7DigitalAsset/ILSP7DigitalAsset.sol";
 import { LSP8MarketplaceSale } from "./LSP8MarketplaceSale.sol";
-
+import {TransferHelper} from './libraries/transferHelpers.sol';
 /**
  * @title LSP8MarketplaceTrade contract
  * @author Afteni Daniel (aka B00ste)
+ * modified by the family
  */
 
  contract LSP8MarketplaceTrade {
@@ -65,14 +66,7 @@ import { LSP8MarketplaceSale } from "./LSP8MarketplaceSale.sol";
     )
         internal
     {
-        ILSP8IdentifiableDigitalAsset(LSP8Address)
-        .transfer(
-            from,
-            to,
-            tokenId,
-            force,
-            _returnLSPTransferData(from, to, amount)
-        );
+        TransferHelper.safeTransferLSP8(LSP8Address, from, to, tokenId, force, _returnLSPTransferData(from, to, amount));
     }
 
     /**
@@ -96,16 +90,10 @@ import { LSP8MarketplaceSale } from "./LSP8MarketplaceSale.sol";
     )
         internal
     {
-        ILSP7DigitalAsset(LSP7Address).authorizeOperator(address(this), amount, "");
-        ILSP7DigitalAsset(LSP7Address)
-        .transfer(
-            from,
-            to,
-            amount,
-            force,
-            _returnLSPTransferData(from, to, amount)
-        );
-
+        // ILSP7DigitalAsset(LSP7Address).authorizeOperator(address(this), amount, "");
+        TransferHelper.safeApprove(LSP7Address, address(this), amount, "");
+        TransferHelper.safeTransferLSP7(LSP7Address, from, to, amount, force, _returnLSPTransferData(from, to, amount));
+        // ILSP7DigitalAsset(LSP7Address);
     }
 
 }

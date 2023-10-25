@@ -188,7 +188,7 @@ contract LSP8MarketplaceOffer is LSP8MarketplaceSale {
         Offers storage _offer = _offers[LSP8Address][tokenId];
         _offer.LSP8Addresses.add(offerLSP8Address);
         _offer.LSP8TokenIds[offerLSP8Address].add(offerTokenId);
-        ILSP8IdentifiableDigitalAsset(offerLSP8Address).authorizeOperator(address(this), offerTokenId);
+        ILSP8IdentifiableDigitalAsset(offerLSP8Address).authorizeOperator(address(this), offerTokenId, "");
     }
 
     /**
@@ -215,7 +215,7 @@ contract LSP8MarketplaceOffer is LSP8MarketplaceSale {
     {
         _offers[LSP8Address][tokenId].LSP8Addresses.remove(offerLSP8Address);
         _offers[LSP8Address][tokenId].LSP8TokenIds[offerLSP8Address].remove(offerTokenId);
-        ILSP8IdentifiableDigitalAsset(offerLSP8Address).revokeOperator(address(this), offerTokenId);
+        ILSP8IdentifiableDigitalAsset(offerLSP8Address).revokeOperator(address(this), offerTokenId, "");
     }
 
     /**
@@ -299,7 +299,7 @@ contract LSP8MarketplaceOffer is LSP8MarketplaceSale {
             _offer.LSP7Addresses[msg.sender].add(LSP7Address);
             _offer.LSP7Amounts[msg.sender].set(LSP7Address, LSP7Amount); 
         }
-        ILSP7DigitalAsset(LSP7Address).authorizeOperator(address(this), LSP7Amount);
+        ILSP7DigitalAsset(LSP7Address).authorizeOperator(address(this), LSP7Amount,"");
         if (_offer.LSP7Addresses[msg.sender].length() > 0) {
             _offer.LSP7OfferCreators.add(msg.sender);
         }
@@ -326,7 +326,7 @@ contract LSP8MarketplaceOffer is LSP8MarketplaceSale {
         Offers storage _offer = _offers[LSP8Address][tokenId];
         _offer.LSP7Addresses[msg.sender].remove(LSP7Address);
         _offer.LSP7Amounts[msg.sender].remove(LSP7Address);
-        ILSP7DigitalAsset(LSP7Address).revokeOperator(address(this));
+        ILSP7DigitalAsset(LSP7Address).revokeOperator(address(this), "");
         if (_offer.LSP7Addresses[msg.sender].length() == 0) {
             _offer.LSP7OfferCreators.remove(msg.sender);
         }

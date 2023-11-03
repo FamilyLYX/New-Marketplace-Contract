@@ -371,6 +371,18 @@ contract LSP8Marketplace is LSP8MarketplaceOffer, LSP8MarketplacePrice, LSP8Mark
         _removeLSP7Offer(LSP8Address, tokenId, LSP7Address);
     }
 
+    function confirmSent(bytes32 orderId, string memory trackingId)external{}
+
+    function confirmReceived(bytes32 orderId,  string memory uid, bytes memory signature)external{}
+
+    function openDispute(bytes32 orderId, string memory reason )external{}
+
+    function dissolveTrade(bytes32 orderId)external{}
+
+    function resolveTrade(bytes32 orderId) external{}
+
+
+
     /**
      * Accept LSP7 offer.
      *

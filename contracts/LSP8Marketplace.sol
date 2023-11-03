@@ -6,6 +6,7 @@ import { ILSP8IdentifiableDigitalAsset } from "@lukso/lsp-smart-contracts/contra
 import { LSP8MarketplaceOffer } from "./LSP8MarketplaceOffer.sol";
 import { LSP8MarketplacePrice } from "./LSP8MarketplacePrice.sol";
 import { LSP8MarketplaceTrade } from "./LSP8MarketplaceTrade.sol";
+import { Verifier } from './MarketplaceVerifier.sol';
 import {TransferHelper} from './libraries/transferHelpers.sol';
 
 /**
@@ -16,6 +17,11 @@ import {TransferHelper} from './libraries/transferHelpers.sol';
  */
 
 contract LSP8Marketplace is LSP8MarketplaceOffer, LSP8MarketplacePrice, LSP8MarketplaceTrade {
+
+    address placeholder;
+    constructor(address _placeholder){
+        placeholder=_placeholder;
+    }
 
     // --- User Functionality.
 
@@ -38,12 +44,16 @@ contract LSP8Marketplace is LSP8MarketplaceOffer, LSP8MarketplacePrice, LSP8Mark
         uint256 LYXAmount,
         address[] memory LSP7Addresses,
         uint256[] memory LSP7Amounts,
-        bool[3] memory allowedOffers
+        bool[3] memory allowedOffers,
+        address placeholder, 
+        string memory uid, 
+        bytes memory signature
     )
         external
         ownsLSP8(LSP8Address, tokenId)
         LSP8NotOnSale(LSP8Address, tokenId)
     {
+        verify(placeholder, uid, signature);
         _addLSP8Sale(LSP8Address, tokenId, allowedOffers);
         _addLYXPrice(LSP8Address, tokenId, LYXAmount);
         _addLSP7Prices(LSP8Address, tokenId, LSP7Addresses, LSP7Amounts);

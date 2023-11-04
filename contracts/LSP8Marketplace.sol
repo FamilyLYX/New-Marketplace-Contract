@@ -3,11 +3,14 @@
 pragma solidity ^0.8.0;
 
 import { ILSP8IdentifiableDigitalAsset } from "@lukso/lsp-smart-contracts/contracts/LSP8IdentifiableDigitalAsset/ILSP8IdentifiableDigitalAsset.sol";
+import { EnumerableSet } from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import { LSP8MarketplaceOffer } from "./LSP8MarketplaceOffer.sol";
 import { LSP8MarketplacePrice } from "./LSP8MarketplacePrice.sol";
 import { LSP8MarketplaceTrade } from "./LSP8MarketplaceTrade.sol";
+import { FamilyMarketPlaceEscrow } from "./MarketplaceEscrow.sol";
 import { Verifier } from './MarketplaceVerifier.sol';
 import {TransferHelper} from './libraries/transferHelpers.sol';
+
 
 /**
  * @title LSP8Marketplace contract
@@ -18,10 +21,43 @@ import {TransferHelper} from './libraries/transferHelpers.sol';
 
 contract LSP8Marketplace is LSP8MarketplaceOffer, LSP8MarketplacePrice, LSP8MarketplaceTrade {
 
+    uint256 private nonce = 0;
+
     address placeholder;
-    constructor(address _placeholder){
-        placeholder=_placeholder;
+    address owner;
+    EnumerableSet.AddressSet jurors;
+    struct Trade{
+        address seller;
+        address buyer;
+        address escrow;
     }
+    mapping(bytes32 => Trade) trades;
+
+    constructor(address _owner, address _placeholder){
+        placeholder=_placeholder;
+        owner=_owner;
+    }
+
+
+    modifier onlyJuror(){
+        require(jurors.contains(msg.sender)|| msg.sender == owner, 'ACCESS DENIED');
+        _;
+    }
+
+
+    function addJuror(address _juror){
+        require(msg.sender==owner, 'ACCESS DENIED');
+        jurors.add(_juror);
+    }
+
+    function removeJuror(address _juror){
+        require(msg.sender==owner, 'ACCESS DENIED');
+        jurors.remove(_juror);
+    }
+
+
+
+
 
     // --- User Functionality.
 
@@ -184,13 +220,17 @@ contract LSP8Marketplace is LSP8MarketplaceOffer, LSP8MarketplacePrice, LSP8Mark
     {
         address payable LSP8Owner = payable(ILSP8IdentifiableDigitalAsset(LSP8Address).tokenOwnerOf(tokenId));
         uint amount = _returnLYXPrice(LSP8Address, tokenId);
+        bytes32 tradeId = keccak256(abi.encodePacked(LSP8Owner, msg.sender, amount, LSP8Address, tokenId, nonce));
+        address escrow = new FamilyMarketPlaceEscrow(LSP8Address, tokenId, LSP8Owner, msg.sender, amount );
         
         _removeOffers(LSP8Address, tokenId);
         _removeLSP8Prices(LSP8Address, tokenId);
         _removeLSP8Sale(LSP8Address, tokenId);
-        _transferLSP8(LSP8Address, LSP8Owner, msg.sender, tokenId, false, 1);
+        _transferLSP8(LSP8Address, LSP8Owner, escrow, tokenId, false, 1);
         TransferHelper.safeTransferLYX(LSP8Owner, amount);
         // LSP8Owner.transfer(amount);
+        trades[tradeId] = Trade(LSP8Owner, msg.sender, escrow );
+        nonce++;
     }
 
     /**
@@ -371,14 +411,39 @@ contract LSP8Marketplace is LSP8MarketplaceOffer, LSP8MarketplacePrice, LSP8Mark
         _removeLSP7Offer(LSP8Address, tokenId, LSP7Address);
     }
 
+    /**
+     * Confirm physical item has been sent.
+     *
+     * 
+     */
     function confirmSent(bytes32 orderId, string memory trackingId)external{}
 
+    /**
+     * Confirm physical item has been received.
+     *
+     * 
+     */
     function confirmReceived(bytes32 orderId,  string memory uid, bytes memory signature)external{}
 
+    /**
+     * Open Dispute.
+     *
+     * 
+     */
     function openDispute(bytes32 orderId, string memory reason )external{}
 
+    /**
+     * Dissolve trade by juror.
+     *
+     * 
+     */
     function dissolveTrade(bytes32 orderId)external{}
 
+    /**
+     * Resolve trade.
+     *
+     * 
+     */
     function resolveTrade(bytes32 orderId) external{}
 
 

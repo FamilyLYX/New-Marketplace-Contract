@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: CC0-1.0
 pragma solidity ^0.8.0;
 
+import {TransferHelper} from './libraries/transferHelpers.sol';
+
 /**
  * @title Family Escrow Contract
  *
@@ -9,6 +11,7 @@ pragma solidity ^0.8.0;
 
 contract FamilyMarketPlaceEscrow{
 
+    address owner;
     address LSP8Collection;
     bytes32 tokenId;
     address seller;
@@ -18,13 +21,15 @@ contract FamilyMarketPlaceEscrow{
     uint256 timestamp;
     uint256 escrowId;
     status escrowStatus;
+    string trackingID;
 
     enum status {
         OPEN, // 0, trade is ongoing
-        CONFIRMED, // 1, trade can be confirmed
-        CANCELED, // 2, trade has been canceled
-        DISPUTED, // 3, trade is in dispute - set period before assets are withheld
-        DISSOLVED // 4, trade has been closed
+        SENT, // 1, item as been sent
+        CONFIRMED, // 2, trade can be confirmed
+        CANCELED, // 3, trade has been canceled
+        DISPUTED, // 4, trade is in dispute - set period before assets are withheld
+        DISSOLVED // 5, trade has been closed
     }
 
     fallback() external payable {
@@ -44,7 +49,12 @@ contract FamilyMarketPlaceEscrow{
     // }
 
     modifier itemIsOpen() {
-        require(escrowStatus != status.DISSOLVED, "Escrow item has been closed.");
+        require(escrowStatus == status.OPEN, "Escrow item has been closed.");
+        _;
+    }
+
+    modifier onlyMarketplace() {
+        require(msg.sender == owner, "Sender Not Marketplace");
         _;
     }
 
@@ -75,7 +85,10 @@ contract FamilyMarketPlaceEscrow{
         timestamp = block.timestamp;
         escrowStatus = status.OPEN;
         balance = amount;
+        owner=msg.sender;
     }
+
+
 
     function getBuyerSeller() public view returns (address[2] memory) {
         return [buyer, seller];
@@ -94,24 +107,41 @@ contract FamilyMarketPlaceEscrow{
         return escrowStatus;
     }
 
-    function release() public payable itemIsOpen {
+    function release() public payable itemIsOpen onlyMarketplace {
         require(
-            msg.sender == buyer,
+            tx.origin == buyer,
             "Only the buyer has the right to finalize trade"
         );
-        payable(seller).transfer(balance);
-        // IFamilyNft(LSP8Collection).transfer(
-        //     address(this),
-        //     buyer,
-        //     tokenId,
-        //     true,
-        //     ""
-        // );
+        TransferHelper.safeTransferLSP8(LSP8Collection, address(this), buyer, tokenId, true, '0x');
+        TransferHelper.safeTransferLYX(seller, balance);
+        escrowStatus = status.CONFIRMED;
+    }
+
+    function markSent(string memory _trackingID)external onlyMarketplace{
+        require(
+            tx.origin == seller,
+            "Only the Seller has the right"
+        );
+        trackingID = _trackingID;
+        escrowStatus = status.SENT;
+    }
+
+    function dissolve() external onlyMarketplace {
+        TransferHelper.safeTransferLSP8(LSP8Collection, address(this), seller, tokenId, true, '0x');
+        TransferHelper.safeTransferLYX(buyer, balance);
         escrowStatus = status.DISSOLVED;
     }
 
-    function refund() public payable {}
+    function settle() external onlyMarketplace {
+        TransferHelper.safeTransferLSP8(LSP8Collection, address(this), buyer, tokenId, true, '0x');
+        TransferHelper.safeTransferLYX(seller, balance);
+        escrowStatus = status.CONFIRMED;
+    }
 
-    function withdraw() public payable {}
-    
+    function cancel() external onlyMarketplace {
+        require( escrowStatus == status.OPEN, 'Item Already Marked Sent');
+        TransferHelper.safeTransferLSP8(LSP8Collection, address(this), seller, tokenId, true, '0x');
+        TransferHelper.safeTransferLYX(buyer, balance);
+        escrowStatus = status.CANCELED;
+    }
 }

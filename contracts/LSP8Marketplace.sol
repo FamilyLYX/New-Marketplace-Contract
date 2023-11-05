@@ -21,6 +21,12 @@ import {TransferHelper} from './libraries/transferHelpers.sol';
 
 contract LSP8Marketplace is LSP8MarketplaceOffer, LSP8MarketplacePrice, LSP8MarketplaceTrade {
 
+    event ItemListed(address indexed collection, bytes32 tokenId, uint256 indexed price);
+
+    event ItemDelisted(address collection, bytes32 tokenId);
+
+    event TradeInitiated(bytes32 indexed tradeId, address indexed seller, address indexed buyer, address escrow, address collection, bytes32 tokenId);
+
     uint256 private nonce = 0;
 
     address placeholder;
@@ -93,6 +99,7 @@ contract LSP8Marketplace is LSP8MarketplaceOffer, LSP8MarketplacePrice, LSP8Mark
         _addLSP8Sale(LSP8Address, tokenId, allowedOffers);
         _addLYXPrice(LSP8Address, tokenId, LYXAmount);
         _addLSP7Prices(LSP8Address, tokenId, LSP7Addresses, LSP7Amounts);
+        emit ItemListed(LSP8Address, tokenId, LYXAmount);
     }
 
     /**
@@ -231,6 +238,7 @@ contract LSP8Marketplace is LSP8MarketplaceOffer, LSP8MarketplacePrice, LSP8Mark
         // LSP8Owner.transfer(amount);
         trades[tradeId] = Trade(LSP8Owner, msg.sender, escrow );
         nonce++;
+        emit TradeInitiated(tradeId, LSP8Owner, msg.sender, escrow, LSP8Address, tokenId);
     }
 
     /**

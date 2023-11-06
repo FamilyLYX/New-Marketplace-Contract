@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: CC0-1.0
 pragma solidity ^0.8.0;
 
+import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import {TransferHelper} from './libraries/transferHelpers.sol';
 
 /**
@@ -9,7 +10,7 @@ import {TransferHelper} from './libraries/transferHelpers.sol';
  */
 
 
-contract FamilyMarketPlaceEscrow{
+contract FamilyMarketPlaceEscrow is ReentrancyGuard{
 
     address owner;
     address LSP8Collection;
@@ -107,7 +108,7 @@ contract FamilyMarketPlaceEscrow{
         return escrowStatus;
     }
 
-    function release() public payable itemIsOpen onlyMarketplace {
+    function release() public payable itemIsOpen onlyMarketplace nonReentrant {
         require(
             tx.origin == buyer,
             "Only the buyer has the right to finalize trade"
@@ -117,7 +118,7 @@ contract FamilyMarketPlaceEscrow{
         escrowStatus = status.CONFIRMED;
     }
 
-    function markSent(string memory _trackingID)external onlyMarketplace{
+    function markSent(string memory _trackingID)external onlyMarketplace nonReentrant {
         require(
             tx.origin == seller,
             "Only the Seller has the right"
@@ -126,19 +127,19 @@ contract FamilyMarketPlaceEscrow{
         escrowStatus = status.SENT;
     }
 
-    function dissolve() external onlyMarketplace {
+    function dissolve() external onlyMarketplace nonReentrant{
         TransferHelper.safeTransferLSP8(LSP8Collection, address(this), seller, tokenId, true, '0x');
         TransferHelper.safeTransferLYX(buyer, balance);
         escrowStatus = status.DISSOLVED;
     }
 
-    function settle() external onlyMarketplace {
+    function settle() external onlyMarketplace nonReentrant{
         TransferHelper.safeTransferLSP8(LSP8Collection, address(this), buyer, tokenId, true, '0x');
         TransferHelper.safeTransferLYX(seller, balance);
         escrowStatus = status.CONFIRMED;
     }
 
-    function cancel() external onlyMarketplace {
+    function cancel() external onlyMarketplace nonReentrant {
         require( escrowStatus == status.OPEN, 'Item Already Marked Sent');
         TransferHelper.safeTransferLSP8(LSP8Collection, address(this), seller, tokenId, true, '0x');
         TransferHelper.safeTransferLYX(buyer, balance);

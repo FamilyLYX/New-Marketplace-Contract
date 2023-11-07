@@ -27,6 +27,14 @@ contract LSP8Marketplace is LSP8MarketplaceOffer, LSP8MarketplacePrice, LSP8Mark
 
     event TradeInitiated(bytes32 indexed tradeId, address indexed seller, address indexed buyer, address escrow, address collection, bytes32 tokenId);
 
+    event Sent(bytes32 indexed tradeId, string indexed trackingId);
+
+    event Received(bytes32 tradId);
+
+    event Resolved(bytes32 tradId);
+
+    event Dissolved(bytes32 tradId);
+
     uint256 private nonce = 0;
 
     address placeholder;
@@ -424,35 +432,60 @@ contract LSP8Marketplace is LSP8MarketplaceOffer, LSP8MarketplacePrice, LSP8Mark
      *
      * 
      */
-    function confirmSent(bytes32 orderId, string memory trackingId)external{}
+    function confirmSent(bytes32 tradeId, string memory trackingId)external{
+        Trade trade=trades[tradeId];
+        require(trade.seller==msg.sender,'');
+        FamilyMarketPlaceEscrow(trade.escrow).markSent(trackingId);
+        emit Sent(tradeId, trackingId);
+    }
 
     /**
      * Confirm physical item has been received.
      *
      * 
      */
-    function confirmReceived(bytes32 orderId,  string memory uid, bytes memory signature)external{}
+    function confirmReceived(bytes32 tradeId,  string memory uid, bytes memory signature)external{
+        Trade trade=trades[tradeId];
+        require(trade.buyer==msg.sender,'');
+        verify(placeholder, uid, signature);
+        FamilyMarketPlaceEscrow(trade.escrow).release();
+        emit Received(tradeId);
+    }
 
     /**
      * Open Dispute.
      *
      * 
      */
-    function openDispute(bytes32 orderId, string memory reason )external{}
+    function openDispute(bytes32 tradeId, string memory reason )external{
+        Trade trade=trades[tradeId];
+        require(trade.seller==msg.sender || trade.buyer==msg.sender,'');
+        // FamilyMarketPlaceEscrow(trade.escrow).markSent();
+    }
 
     /**
      * Dissolve trade by juror.
      *
      * 
      */
-    function dissolveTrade(bytes32 orderId)external{}
+    function dissolveTrade(bytes32 tradeId)external{
+        require(jurors.includes(msg.sender),'');
+        Trade trade=trades[tradeId];
+        FamilyMarketPlaceEscrow(trade.escrow).dissolve();
+        emit Dissolve(tradeId);
+    }
 
     /**
      * Resolve trade.
      *
      * 
      */
-    function resolveTrade(bytes32 orderId) external{}
+    function resolveTrade(bytes32 tradeId) external{
+        require(jurors.includes(msg.sender),'');
+        Trade trade=trades[tradeId];
+        FamilyMarketPlaceEscrow(trade.escrow).settle();
+        emit Resolve(tradeId);
+    }
 
 
 

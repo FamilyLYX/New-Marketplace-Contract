@@ -127,6 +127,12 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard{
         escrowStatus = status.SENT;
     }
 
+    function dispute() external onlyMarketplace nonReentrant {
+        escrowStatus = status.DISPUTED;
+    }
+
+
+
     function dissolve() external onlyMarketplace nonReentrant{
         TransferHelper.safeTransferLSP8(LSP8Collection, address(this), seller, tokenId, true, '0x');
         TransferHelper.safeTransferLYX(buyer, balance);

@@ -29,6 +29,8 @@ contract LSP8Marketplace is LSP8MarketplaceOffer, LSP8MarketplacePrice, LSP8Mark
 
     event Sent(bytes32 indexed tradeId, string indexed trackingId);
 
+    event Dispute(bytes32 indexed tradeId, string indexed trackingId);
+
     event Received(bytes32 tradId);
 
     event Resolved(bytes32 tradId);
@@ -460,7 +462,8 @@ contract LSP8Marketplace is LSP8MarketplaceOffer, LSP8MarketplacePrice, LSP8Mark
     function openDispute(bytes32 tradeId, string memory reason )external{
         Trade trade=trades[tradeId];
         require(trade.seller==msg.sender || trade.buyer==msg.sender,'');
-        // FamilyMarketPlaceEscrow(trade.escrow).markSent();
+        FamilyMarketPlaceEscrow(trade.escrow).dispute();
+        emit Dispute(tradeId, reason);
     }
 
     /**

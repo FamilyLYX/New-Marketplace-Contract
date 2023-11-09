@@ -2,6 +2,7 @@
 pragma solidity ^0.8.0;
 
 import {IERC1271} from "@openzeppelin/contracts/interfaces/IERC1271.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {IPlaceholder} from './IPlaceholder.sol';
 import './constants.sol';
 contract Verifier{
@@ -34,8 +35,7 @@ contract Verifier{
         // If owner is an EOA
         else {
             // if isValidSignature fail, the error is catched in returnedError
-            (address recoveredAddress, ECDSA.RecoverError returnedError) = ECDSA
-                .tryRecover(dataHash, signature);
+            (address recoveredAddress, ECDSA.RecoverError returnedError, bytes32 last) = ECDSA.tryRecover(dataHash, signature);
 
             // if recovering throws an error, return the fail value
             if (returnedError != ECDSA.RecoverError.NoError)
@@ -51,7 +51,7 @@ contract Verifier{
         }
     }
     
-    function verify(address _placeholder, string memory uid, bytes memory signature ){
+    function verify(address _placeholder, string memory uid, bytes memory signature ) internal {
         address _owner= IPlaceholder(_placeholder).owner();
         bytes32 messageHash = keccak256(bytes.concat(_MSG_HASH_PREFIX, bytes(uid)));
         if (_isValidSignature(_owner, messageHash, signature) != _ERC1271_MAGICVALUE) {

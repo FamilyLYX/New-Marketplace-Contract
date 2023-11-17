@@ -17,6 +17,7 @@ contract LSP8MarketplaceSale {
     // --- Storage.
 
     mapping (address => EnumerableSet.Bytes32Set) private _sale;
+    mapping (address => EnumerableSet.Bytes32Set) private acceptsFiat;
 
     /**
      * Allows sellers to choose if they want to have LYX, LSP7 or LSP8 offers.
@@ -124,6 +125,17 @@ contract LSP8MarketplaceSale {
         _;
     }
 
+    modifier allowFiat (
+        address LSP8Address,
+        bytes32 tokenId
+    ) {
+        require(
+            acceptsFiat[LSP8Address].contains(tokenId),
+            "Seller does not accept fiat"
+        );
+        _;
+    }
+
     /**
      * Modifier checks if the LSP8 that is not on sale.
      * 
@@ -161,13 +173,17 @@ contract LSP8MarketplaceSale {
     function _addLSP8Sale (
         address LSP8Address,
         bytes32 tokenId,
-        bool[3] memory allowedOffers
+        bool[3] memory allowedOffers,
+        bool _acceptFiat
     )
         internal
     {
         _sale[LSP8Address].add(tokenId);
         _allowedOffers[LSP8Address][tokenId] = allowedOffers;
         ILSP8IdentifiableDigitalAsset(LSP8Address).authorizeOperator(address(this), tokenId, "");
+        if (_acceptFiat==true){
+            acceptsFiat[LSP8Address].add(tokenId);
+        }
     }
 
     /**
@@ -192,6 +208,9 @@ contract LSP8MarketplaceSale {
         _sale[LSP8Address].remove(tokenId);
         delete _allowedOffers[LSP8Address][tokenId];
         ILSP8IdentifiableDigitalAsset(LSP8Address).revokeOperator(address(this), tokenId, "");
+        if (acceptsFiat[LSP8Address].contains(tokenId)){
+            acceptsFiat[LSP8Address].remove(tokenId);
+        }
     }
 
     /**

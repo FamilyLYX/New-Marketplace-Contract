@@ -23,11 +23,16 @@ contract LSP8Marketplace is LSP8MarketplaceOffer, LSP8MarketplacePrice, LSP8Mark
 
     using EnumerableSet for EnumerableSet.AddressSet;
 
-    event ItemListed(address indexed collection, bytes32 tokenId, uint256 indexed price);
+    enum collectionType{
+        Digital,
+        Phygital
+    }
+
+    event ItemListed(address indexed collection, bytes32 indexed tokenId, uint256 indexed price, string listingURl, bool ItemListed, collectionType);
 
     event ItemDelisted(address collection, bytes32 tokenId);
 
-    event TradeInitiated(bytes32 indexed tradeId, address indexed seller, address indexed buyer, address escrow, address collection, bytes32 tokenId);
+    event TradeInitiated(bytes32 indexed tradeId, address indexed seller, address indexed buyer, address escrow, address collection, bytes32 tokenId, uint256 price);
 
     event Sent(bytes32 indexed tradeId, string indexed trackingId);
 
@@ -38,6 +43,12 @@ contract LSP8Marketplace is LSP8MarketplaceOffer, LSP8MarketplacePrice, LSP8Mark
     event Resolved(bytes32 tradId);
 
     event Dissolved(bytes32 tradId);
+
+    event ReceivedFiat(bytes32 tradId);
+
+    event ResolvedFiat(bytes32 tradId);
+
+    event DissolvedFiat(bytes32 tradId);
 
     uint256 private nonce = 0;
 
@@ -59,6 +70,11 @@ contract LSP8Marketplace is LSP8MarketplaceOffer, LSP8MarketplacePrice, LSP8Mark
 
     modifier onlyJuror(){
         require(jurors.contains(msg.sender)|| msg.sender == owner, 'ACCESS DENIED');
+        _;
+    }
+
+    modifier onlyOwner(){
+        require(msg.sender==owner, 'ACCESS DENIED');
         _;
     }
 
@@ -100,17 +116,39 @@ contract LSP8Marketplace is LSP8MarketplaceOffer, LSP8MarketplacePrice, LSP8Mark
         uint256[] memory LSP7Amounts,
         bool[3] memory allowedOffers,
         string memory uid, 
-        bytes memory signature
+        bytes memory signature,
+        string memory listingURl,
+        bool _acceptFiat
     )
         external
         ownsLSP8(LSP8Address, tokenId)
         LSP8NotOnSale(LSP8Address, tokenId)
     {
         verify(placeholder, uid, signature);
-        _addLSP8Sale(LSP8Address, tokenId, allowedOffers);
+        _addLSP8Sale(LSP8Address, tokenId, allowedOffers, _acceptFiat);
         _addLYXPrice(LSP8Address, tokenId, LYXAmount);
         _addLSP7Prices(LSP8Address, tokenId, LSP7Addresses, LSP7Amounts);
-        emit ItemListed(LSP8Address, tokenId, LYXAmount);
+        emit ItemListed(LSP8Address, tokenId, LYXAmount, listingURl, _acceptFiat, collectionType.Phygital);
+    }
+
+    function putDigitalLSP8OnSale (
+        address LSP8Address,
+        bytes32 tokenId,
+        uint256 LYXAmount,
+        address[] memory LSP7Addresses,
+        uint256[] memory LSP7Amounts,
+        bool[3] memory allowedOffers,
+        string memory listingURl,
+        bool _acceptFiat
+    )
+        external
+        ownsLSP8(LSP8Address, tokenId)
+        LSP8NotOnSale(LSP8Address, tokenId)
+    {
+        _addLSP8Sale(LSP8Address, tokenId, allowedOffers, _acceptFiat);
+        _addLYXPrice(LSP8Address, tokenId, LYXAmount);
+        _addLSP7Prices(LSP8Address, tokenId, LSP7Addresses, LSP7Amounts);
+        emit ItemListed(LSP8Address, tokenId, LYXAmount, listingURl, _acceptFiat, collectionType.Digital);
     }
 
     /**
@@ -245,11 +283,85 @@ contract LSP8Marketplace is LSP8MarketplaceOffer, LSP8MarketplacePrice, LSP8Mark
         _removeLSP8Prices(LSP8Address, tokenId);
         _removeLSP8Sale(LSP8Address, tokenId);
         _transferLSP8(LSP8Address, LSP8Owner, escrow, tokenId, false, 1);
-        TransferHelper.safeTransferLYX(LSP8Owner, amount);
+        TransferHelper.safeTransferLYX(escrow, amount);
         // LSP8Owner.transfer(amount);
         trades[tradeId] = Trade(LSP8Owner, msg.sender, payable(escrow) );
         nonce++;
-        emit TradeInitiated(tradeId, LSP8Owner, msg.sender, escrow, LSP8Address, tokenId);
+        emit TradeInitiated(tradeId, LSP8Owner, msg.sender, escrow, LSP8Address, tokenId, amount);
+    }
+
+    function buyLSP8WithFiat (
+        address LSP8Address,
+        address buyer,
+        bytes32 tokenId
+    )
+        external
+        payable
+        sendEnoughLYX(LSP8Address, tokenId)
+        LSP8OnSale(LSP8Address, tokenId)
+        allowFiat(LSP8Address, tokenId)
+    {
+        require(msg.sender==owner, 'ACCESS DENIED');
+        address payable LSP8Owner = payable(ILSP8IdentifiableDigitalAsset(LSP8Address).tokenOwnerOf(tokenId));
+        uint amount = _returnLYXPrice(LSP8Address, tokenId);
+        bytes32 tradeId = keccak256(abi.encodePacked(LSP8Owner, buyer, amount, LSP8Address, tokenId, nonce));
+        address escrow = address(new FamilyMarketPlaceEscrow(LSP8Address, tokenId, LSP8Owner, buyer, amount ));
+        
+        _removeOffers(LSP8Address, tokenId);
+        _removeLSP8Prices(LSP8Address, tokenId);
+        _removeLSP8Sale(LSP8Address, tokenId);
+        _transferLSP8(LSP8Address, LSP8Owner, escrow, tokenId, false, 1);
+        // LSP8Owner.transfer(amount);
+        trades[tradeId] = Trade(LSP8Owner, buyer, payable(escrow) );
+        nonce++;
+        emit TradeInitiated(tradeId, LSP8Owner, buyer, escrow, LSP8Address, tokenId, amount);
+    }
+
+    function buyDigitalLSP8WithLYX (
+        address LSP8Address,
+        bytes32 tokenId
+    )
+        external
+        payable
+        sendEnoughLYX(LSP8Address, tokenId)
+        LSP8OnSale(LSP8Address, tokenId)
+    {
+        address payable LSP8Owner = payable(ILSP8IdentifiableDigitalAsset(LSP8Address).tokenOwnerOf(tokenId));
+        uint amount = _returnLYXPrice(LSP8Address, tokenId);
+        bytes32 tradeId = keccak256(abi.encodePacked(LSP8Owner, msg.sender, amount, LSP8Address, tokenId, nonce));
+        
+        _removeOffers(LSP8Address, tokenId);
+        _removeLSP8Prices(LSP8Address, tokenId);
+        _removeLSP8Sale(LSP8Address, tokenId);
+        _transferLSP8(LSP8Address, LSP8Owner, msg.sender, tokenId, false, 1);
+        TransferHelper.safeTransferLYX(LSP8Owner, amount);
+        // LSP8Owner.transfer(amount);
+        trades[tradeId] = Trade(LSP8Owner, msg.sender, payable(address(0)) );
+        nonce++;
+        emit TradeInitiated(tradeId, LSP8Owner, msg.sender, address(0), LSP8Address, tokenId, amount);
+    }
+
+    function buyDigitalLSP8WithFiat (
+        address LSP8Address,
+        bytes32 tokenId,
+        address buyer
+    )
+        external
+        payable
+        sendEnoughLYX(LSP8Address, tokenId)
+        LSP8OnSale(LSP8Address, tokenId)
+    {
+        address payable LSP8Owner = payable(ILSP8IdentifiableDigitalAsset(LSP8Address).tokenOwnerOf(tokenId));
+        uint amount = _returnLYXPrice(LSP8Address, tokenId);
+        bytes32 tradeId = keccak256(abi.encodePacked(LSP8Owner, buyer, amount, LSP8Address, tokenId, nonce));
+        
+        _removeOffers(LSP8Address, tokenId);
+        _removeLSP8Prices(LSP8Address, tokenId);
+        _removeLSP8Sale(LSP8Address, tokenId);
+        _transferLSP8(LSP8Address, LSP8Owner, buyer, tokenId, false, 1);
+        trades[tradeId] = Trade(LSP8Owner, buyer, payable(address(0)) );
+        nonce++;
+        emit TradeInitiated(tradeId, LSP8Owner, buyer, address(0), LSP8Address, tokenId, amount);
     }
 
     /**
@@ -455,6 +567,28 @@ contract LSP8Marketplace is LSP8MarketplaceOffer, LSP8MarketplacePrice, LSP8Mark
         emit Received(tradeId);
     }
 
+    function confirmDigitalReceived(bytes32 tradeId)external{
+        Trade memory trade=trades[tradeId];
+        require(trade.buyer==msg.sender,'');
+        FamilyMarketPlaceEscrow(trade.escrow).release();
+        emit Received(tradeId);
+    }
+
+    function confirmReceivedFiat(bytes32 tradeId,  string memory uid, bytes memory signature)external onlyOwner{
+        Trade memory trade=trades[tradeId];
+        verify(placeholder, uid, signature);
+        FamilyMarketPlaceEscrow(trade.escrow).releaseFiat();
+        emit Received(tradeId);
+        emit ReceivedFiat(tradeId);
+    }
+
+    function confirmDigitalReceivedFiat(bytes32 tradeId) external onlyOwner {
+        Trade memory trade=trades[tradeId];
+        FamilyMarketPlaceEscrow(trade.escrow).releaseFiat();
+        emit Received(tradeId);
+        emit ReceivedFiat(tradeId);
+    }
+
     /**
      * Open Dispute.
      *
@@ -479,6 +613,14 @@ contract LSP8Marketplace is LSP8MarketplaceOffer, LSP8MarketplacePrice, LSP8Mark
         emit Dissolved(tradeId);
     }
 
+    function dissolveTradeFiat(bytes32 tradeId)external{
+        require(jurors.contains(msg.sender),'');
+        Trade memory trade=trades[tradeId];
+        FamilyMarketPlaceEscrow(trade.escrow).dissolve();
+        emit Dissolved(tradeId);
+        emit DissolvedFiat(tradeId);
+    }
+
     /**
      * Resolve trade.
      *
@@ -489,6 +631,14 @@ contract LSP8Marketplace is LSP8MarketplaceOffer, LSP8MarketplacePrice, LSP8Mark
         Trade memory trade=trades[tradeId];
         FamilyMarketPlaceEscrow(trade.escrow).settle();
         emit Resolved(tradeId);
+    }
+
+    function resolveTradeFiat(bytes32 tradeId) external{
+        require(jurors.contains(msg.sender),'');
+        Trade memory trade=trades[tradeId];
+        FamilyMarketPlaceEscrow(trade.escrow).settleFiat();
+        emit Resolved(tradeId);
+        emit ResolvedFiat(tradeId);
     }
 
 

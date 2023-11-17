@@ -51,7 +51,7 @@ contract Verifier{
         }
     }
     
-    function verify(address _placeholder, string memory uid, bytes memory signature ) internal {
+    function verify(address _placeholder, string memory uid, bytes memory signature ) internal view {
         address _owner= IPlaceholder(_placeholder).owner();
         bytes32 messageHash = keccak256(bytes.concat(_MSG_HASH_PREFIX, bytes(uid)));
         if (_isValidSignature(_owner, messageHash, signature) != _ERC1271_MAGICVALUE) {

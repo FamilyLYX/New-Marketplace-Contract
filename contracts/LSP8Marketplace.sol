@@ -102,8 +102,6 @@ contract LSP8Marketplace is LSP8MarketplaceOffer, LSP8MarketplacePrice, LSP8Mark
      * @param LSP8Address Address of the LSP8 token contract.
      * @param tokenId Token id of the `LSP8Address` NFT that will be put on sale.
      * @param LYXAmount Buyout amount of LYX coins.
-     * @param LSP7Addresses Addresses of the LSP7 token contracts allowed for buyout.
-     * @param LSP7Amounts Buyout amounts in `LSP7Addresses` tokens.
      * 
      * @notice For information about `ownsLSP8` and `LSP8NotOnSale` modifiers and about `_addLSP8Sale` function check the LSP8MarketplaceSale smart contract.
      * For information about `_addLYXPrice` and `_addLSP7Prices` functions check the LSP8MArketplacePrice smart contract.
@@ -112,8 +110,6 @@ contract LSP8Marketplace is LSP8MarketplaceOffer, LSP8MarketplacePrice, LSP8Mark
         address LSP8Address,
         bytes32 tokenId,
         uint256 LYXAmount,
-        address[] memory LSP7Addresses,
-        uint256[] memory LSP7Amounts,
         bool[3] memory allowedOffers,
         string memory uid, 
         bytes memory signature,
@@ -127,7 +123,6 @@ contract LSP8Marketplace is LSP8MarketplaceOffer, LSP8MarketplacePrice, LSP8Mark
         verify(placeholder, uid, signature);
         _addLSP8Sale(LSP8Address, tokenId, allowedOffers, _acceptFiat);
         _addLYXPrice(LSP8Address, tokenId, LYXAmount);
-        _addLSP7Prices(LSP8Address, tokenId, LSP7Addresses, LSP7Amounts);
         emit ItemListed(LSP8Address, tokenId, LYXAmount, listingURl, _acceptFiat, collectionType.Phygital);
     }
 
@@ -135,8 +130,6 @@ contract LSP8Marketplace is LSP8MarketplaceOffer, LSP8MarketplacePrice, LSP8Mark
         address LSP8Address,
         bytes32 tokenId,
         uint256 LYXAmount,
-        address[] memory LSP7Addresses,
-        uint256[] memory LSP7Amounts,
         bool[3] memory allowedOffers,
         string memory listingURl,
         bool _acceptFiat
@@ -147,7 +140,6 @@ contract LSP8Marketplace is LSP8MarketplaceOffer, LSP8MarketplacePrice, LSP8Mark
     {
         _addLSP8Sale(LSP8Address, tokenId, allowedOffers, _acceptFiat);
         _addLYXPrice(LSP8Address, tokenId, LYXAmount);
-        _addLSP7Prices(LSP8Address, tokenId, LSP7Addresses, LSP7Amounts);
         emit ItemListed(LSP8Address, tokenId, LYXAmount, listingURl, _acceptFiat, collectionType.Digital);
     }
 

@@ -16,7 +16,9 @@ async function main() {
 
   await _LSP8Marketplace.deployed();
 
-  console.log(`LSP8Marketplace deployed to ${_LSP8Marketplace.address}`);
+  console.log(
+    `LSP8Marketplace deployed to ${await _LSP8Marketplace.getAddress()}`
+  );
 }
 
 // We recommend this pattern to be able to use async/await everywhere

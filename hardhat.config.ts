@@ -1,5 +1,6 @@
 import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
+import "ethers";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -10,7 +11,12 @@ const config: HardhatUserConfig = {
     compilers: [
       {
         version: "0.8.20",
-        settings: { optimizer: { enabled: true, runs: 200 }, viaIR: true },
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 1000,
+          },
+        },
       },
     ],
   },

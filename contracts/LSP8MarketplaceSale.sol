@@ -112,7 +112,6 @@ contract LSP8MarketplaceSale {
         internal
     {
         _sale[LSP8Address].add(tokenId);
-        ILSP8IdentifiableDigitalAsset(LSP8Address).authorizeOperator(address(this), tokenId, "");
         if (_acceptFiat==true){
             acceptsFiat[LSP8Address].add(tokenId);
         }

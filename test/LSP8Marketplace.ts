@@ -33,6 +33,7 @@ describe("LSP8Marketplace", function () {
     LSP8Marketplace = await ethers.getContractFactory("LSP8Marketplace");
     lsp8Marketplace = await LSP8Marketplace.deploy(
       owner.address,
+      owner.address,
       owner.address
     );
     await lsp8Marketplace.deployed();

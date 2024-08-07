@@ -11,6 +11,7 @@ async function main() {
   const LSP8Marketplace = await ethers.getContractFactory("LSP8Marketplace");
   const _LSP8Marketplace = await LSP8Marketplace.deploy(
     "0xED7ab89032963e1Fbb83f2A3b4298661d01e322B",
+    "0xED7ab89032963e1Fbb83f2A3b4298661d01e322B",
     "0x2b55C256018B6CF2D6856A4780D88f5eEE8583B5"
   );
 

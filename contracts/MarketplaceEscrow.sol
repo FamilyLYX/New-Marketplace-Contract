@@ -2,16 +2,14 @@
 pragma solidity ^0.8.0;
 
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import {TransferHelper} from './libraries/transferHelpers.sol';
+import {TransferHelper} from "./libraries/transferHelpers.sol";
 
 /**
  * @title Family Escrow Contract
  *
  */
 
-
-contract FamilyMarketPlaceEscrow is ReentrancyGuard{
-
+contract FamilyMarketPlaceEscrow is ReentrancyGuard {
     address owner;
     address LSP8Collection;
     bytes32 tokenId;
@@ -23,6 +21,7 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard{
     uint256 escrowId;
     status escrowStatus;
     string trackingID;
+    bool public isEscrow = true;
 
     enum status {
         OPEN, // 0, trade is ongoing
@@ -86,10 +85,8 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard{
         timestamp = block.timestamp;
         escrowStatus = status.OPEN;
         balance = amount;
-        owner=msg.sender;
+        owner = msg.sender;
     }
-
-
 
     function getBuyerSeller() public view returns (address[2] memory) {
         return [buyer, seller];
@@ -113,21 +110,40 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard{
             tx.origin == buyer,
             "Only the buyer has the right to finalize trade"
         );
-        TransferHelper.safeTransferLSP8(LSP8Collection, address(this), buyer, tokenId, true, '0x');
+        TransferHelper.safeTransferLSP8(
+            LSP8Collection,
+            address(this),
+            buyer,
+            tokenId,
+            true,
+            "0x"
+        );
         TransferHelper.safeTransferLYX(seller, balance);
         escrowStatus = status.CONFIRMED;
     }
 
-    function releaseFiat() public payable itemIsOpen onlyMarketplace nonReentrant {
-        TransferHelper.safeTransferLSP8(LSP8Collection, address(this), buyer, tokenId, true, '0x');
+    function releaseFiat()
+        public
+        payable
+        itemIsOpen
+        onlyMarketplace
+        nonReentrant
+    {
+        TransferHelper.safeTransferLSP8(
+            LSP8Collection,
+            address(this),
+            buyer,
+            tokenId,
+            true,
+            "0x"
+        );
         escrowStatus = status.CONFIRMED;
     }
 
-    function markSent(string memory _trackingID)external onlyMarketplace nonReentrant {
-        require(
-            tx.origin == seller,
-            "Only the Seller has the right"
-        );
+    function markSent(
+        string memory _trackingID
+    ) external onlyMarketplace nonReentrant {
+        require(tx.origin == seller, "Only the Seller has the right");
         trackingID = _trackingID;
         escrowStatus = status.SENT;
     }
@@ -136,41 +152,81 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard{
         escrowStatus = status.DISPUTED;
     }
 
-
-
-    function dissolve() external onlyMarketplace nonReentrant{
-        TransferHelper.safeTransferLSP8(LSP8Collection, address(this), seller, tokenId, true, '0x');
+    function dissolve() external onlyMarketplace nonReentrant {
+        TransferHelper.safeTransferLSP8(
+            LSP8Collection,
+            address(this),
+            seller,
+            tokenId,
+            true,
+            "0x"
+        );
         TransferHelper.safeTransferLYX(buyer, balance);
         escrowStatus = status.DISSOLVED;
     }
 
-    function dissolveFiat() external onlyMarketplace nonReentrant{
-        TransferHelper.safeTransferLSP8(LSP8Collection, address(this), seller, tokenId, true, '0x');
+    function dissolveFiat() external onlyMarketplace nonReentrant {
+        TransferHelper.safeTransferLSP8(
+            LSP8Collection,
+            address(this),
+            seller,
+            tokenId,
+            true,
+            "0x"
+        );
         escrowStatus = status.DISSOLVED;
     }
 
-    function settle() external onlyMarketplace nonReentrant{
-        TransferHelper.safeTransferLSP8(LSP8Collection, address(this), buyer, tokenId, true, '0x');
+    function settle() external onlyMarketplace nonReentrant {
+        TransferHelper.safeTransferLSP8(
+            LSP8Collection,
+            address(this),
+            buyer,
+            tokenId,
+            true,
+            "0x"
+        );
         TransferHelper.safeTransferLYX(seller, balance);
         escrowStatus = status.CONFIRMED;
     }
 
-    function settleFiat() external onlyMarketplace nonReentrant{
-        TransferHelper.safeTransferLSP8(LSP8Collection, address(this), buyer, tokenId, true, '0x');
+    function settleFiat() external onlyMarketplace nonReentrant {
+        TransferHelper.safeTransferLSP8(
+            LSP8Collection,
+            address(this),
+            buyer,
+            tokenId,
+            true,
+            "0x"
+        );
         TransferHelper.safeTransferLYX(seller, balance);
         escrowStatus = status.CONFIRMED;
     }
 
     function cancel() external onlyMarketplace nonReentrant {
-        require( escrowStatus == status.OPEN, 'Item Already Marked Sent');
-        TransferHelper.safeTransferLSP8(LSP8Collection, address(this), seller, tokenId, true, '0x');
+        require(escrowStatus == status.OPEN, "Item Already Marked Sent");
+        TransferHelper.safeTransferLSP8(
+            LSP8Collection,
+            address(this),
+            seller,
+            tokenId,
+            true,
+            "0x"
+        );
         TransferHelper.safeTransferLYX(buyer, balance);
         escrowStatus = status.CANCELED;
     }
 
     function cancelFiat() external onlyMarketplace nonReentrant {
-        require( escrowStatus == status.OPEN, 'Item Already Marked Sent');
-        TransferHelper.safeTransferLSP8(LSP8Collection, address(this), seller, tokenId, true, '0x');
+        require(escrowStatus == status.OPEN, "Item Already Marked Sent");
+        TransferHelper.safeTransferLSP8(
+            LSP8Collection,
+            address(this),
+            seller,
+            tokenId,
+            true,
+            "0x"
+        );
         escrowStatus = status.CANCELED;
     }
 }

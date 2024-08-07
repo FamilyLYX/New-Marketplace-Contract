@@ -87,7 +87,11 @@ contract LSP8Marketplace is
         address buyer;
         address payable escrow;
     }
+
     mapping(bytes32 => Trade) trades;
+
+    mapping(address escrow => bool) public isEscrow;
+
 
     constructor(address _owner, address _admin, address _placeholder) {
         placeholder = _placeholder;
@@ -318,6 +322,8 @@ contract LSP8Marketplace is
             )
         );
 
+        isEscrow[escrow] = true;
+
         _removeLSP8Prices(LSP8Address, tokenId);
         _removeLSP8Sale(LSP8Address, tokenId);
         _transferLSP8(LSP8Address, LSP8Owner, escrow, tokenId, false, 1);
@@ -375,6 +381,8 @@ contract LSP8Marketplace is
                 amount
             )
         );
+
+        isEscrow[escrow] = true;
 
         _removeLSP8Prices(collection, tokenId);
         _transferLSP8(collection, LSP8Owner, escrow, _tokenId, false, 1);

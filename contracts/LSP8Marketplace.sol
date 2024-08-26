@@ -26,16 +26,16 @@ contract LSP8Marketplace is
 {
     using EnumerableSet for EnumerableSet.AddressSet;
 
-    enum collectionType {
+    enum CollectionType {
         Digital,
         Phygital
     }
 
     /**
-     * 
+     *
      * @notice when new admin is set
      * @param oldAdmin address of previous admin
-     * @param newAdmin address of new admin 
+     * @param newAdmin address of new admin
      */
     event SetAdmin(address oldAdmin, address newAdmin);
 
@@ -45,7 +45,7 @@ contract LSP8Marketplace is
         uint256 indexed price,
         string listingURl,
         bool ItemListed,
-        collectionType
+        CollectionType collectionType
     );
 
     event ItemDelisted(address collection, bytes32 tokenId);
@@ -64,17 +64,17 @@ contract LSP8Marketplace is
 
     event Dispute(bytes32 indexed tradeId, string indexed trackingId);
 
-    event Received(bytes32 tradId);
+    event Received(bytes32 tradeId);
 
-    event Resolved(bytes32 tradId);
+    event Resolved(bytes32 tradeId);
 
-    event Dissolved(bytes32 tradId);
+    event Dissolved(bytes32 tradeId);
 
-    event ReceivedFiat(bytes32 tradId);
+    event ReceivedFiat(bytes32 tradeId);
 
-    event ResolvedFiat(bytes32 tradId);
+    event ResolvedFiat(bytes32 tradeId);
 
-    event DissolvedFiat(bytes32 tradId);
+    event DissolvedFiat(bytes32 tradeId);
 
     uint256 private nonce = 0;
 
@@ -92,7 +92,6 @@ contract LSP8Marketplace is
 
     mapping(address escrow => bool) public isEscrow;
 
-
     constructor(address _owner, address _admin, address _placeholder) {
         placeholder = _placeholder;
         owner = _owner;
@@ -100,8 +99,8 @@ contract LSP8Marketplace is
     }
 
     modifier onlyAdmin() {
-        if(msg.sender != admin) revert LSP8Marketplace__OnlyAdmin();
-        _
+        if (msg.sender != admin) revert LSP8Marketplace__OnlyAdmin();
+        _;
     }
 
     modifier onlyOwner() {
@@ -111,7 +110,7 @@ contract LSP8Marketplace is
 
     /**
      * @notice sets a new admin
-     * @dev can only be called by current admin 
+     * @dev can only be called by current admin
      * @param _newAdmin address of new admin
      */
     function setAdmin(address _newAdmin) external onlyAdmin {
@@ -157,7 +156,7 @@ contract LSP8Marketplace is
             LYXAmount,
             listingURl,
             _acceptFiat,
-            collectionType.Phygital
+            CollectionType.Phygital
         );
     }
 
@@ -180,7 +179,7 @@ contract LSP8Marketplace is
             LYXAmount,
             listingURl,
             _acceptFiat,
-            collectionType.Digital
+            CollectionType.Digital
         );
     }
 

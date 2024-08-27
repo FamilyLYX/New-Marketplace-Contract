@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: CC0-1.0
 pragma solidity ^0.8.0;
 
+import {ILSP8IdentifiableDigitalAsset} from "@lukso/lsp-smart-contracts/contracts/LSP8IdentifiableDigitalAsset/ILSP8IdentifiableDigitalAsset.sol";
+
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {TransferHelper} from "./libraries/transferHelpers.sol";
 
@@ -16,12 +18,22 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard {
     address seller;
     address buyer;
     uint256 balance;
+
+    address familyAddress;
     // address OGminter;
     uint256 timestamp;
     uint256 escrowId;
     status escrowStatus;
     string trackingID;
     bool public isEscrow = true;
+
+    uint8 platformFee = 250; // fee/100 would give the percentage
+
+    struct DecodedRoyalty {
+        // bytes4 byteValue;
+        address addrValue;
+        uint256 numValue;
+    }
 
     enum status {
         OPEN, // 0, trade is ongoing
@@ -88,6 +100,32 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard {
         owner = msg.sender;
     }
 
+    function parseRoyalty(
+        bytes memory royalty
+    ) public pure returns (DecodedRoyalty memory royaltyInstance) {
+        require(royalty.length >= 20, "Royalty data is too short"); // Ensure the royalty bytes are long enough
+
+        // Extract the relevant bytes for addrValue and numValue
+        bytes14 addrBytes;
+        bytes12 numBytes;
+
+        // Extract bytes for addrValue (assuming the relevant 14 bytes start from index 0)
+        assembly {
+            addrBytes := mload(add(royalty, 20))
+        }
+        // Convert bytes14 to bytes32, then to uint256, and finally to address
+        royaltyInstance.addrValue = address(
+            uint160(uint256(bytes32(addrBytes)))
+        );
+
+        // Extract bytes for numValue (assuming the relevant 12 bytes start from index 14)
+        assembly {
+            numBytes := mload(add(royalty, 32))
+        }
+        // Convert bytes12 to bytes32, then to uint256, and finally to uint96
+        royaltyInstance.numValue = uint96(uint256(bytes32(numBytes)));
+    }
+
     function getBuyerSeller() public view returns (address[2] memory) {
         return [buyer, seller];
     }
@@ -118,7 +156,26 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard {
             true,
             "0x"
         );
-        TransferHelper.safeTransferLYX(seller, balance);
+
+        bytes memory royalty = ILSP8IdentifiableDigitalAsset(LSP8Collection)
+            .getData(
+                0xc0569ca6c9180acc2c3590f36330a36ae19015a19f4e85c28a7631e3317e6b9d
+            );
+
+        uint256 payment = balance;
+
+        if (royalty.length > 0) {
+            DecodedRoyalty memory royaltyParts = parseRoyalty(royalty);
+            uint256 royaltyFee = ((royaltyParts.numValue / 1000) * balance) /
+                100;
+            TransferHelper.safeTransferLYX(royaltyParts.addrValue, royaltyFee);
+
+            payment -= royaltyFee;
+        }
+
+        uint256 fee = (balance * (platformFee / 100)) / 100;
+        TransferHelper.safeTransferLYX(familyAddress, fee);
+        TransferHelper.safeTransferLYX(seller, payment - fee);
         escrowStatus = status.CONFIRMED;
     }
 

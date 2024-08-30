@@ -317,7 +317,8 @@ contract LSP8Marketplace is
                 tokenId,
                 LSP8Owner,
                 msg.sender,
-                amount
+                amount,
+                admin
             )
         );
 
@@ -377,7 +378,8 @@ contract LSP8Marketplace is
                 _tokenId,
                 LSP8Owner,
                 _buyer,
-                amount
+                amount,
+                admin
             )
         );
 

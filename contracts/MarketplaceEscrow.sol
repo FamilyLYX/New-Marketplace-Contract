@@ -79,6 +79,8 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard {
      * @param _seller Address of the LSP8 sender (aka from).
      * @param _buyer Address of the LSP8 receiver (aka to).
      * @param amount Sale price of asset.
+     * @param _familyAddress address of the fee receiver
+     *
      *
      * @notice this method can only be called once Buyer commits LYX payment
      */
@@ -88,7 +90,8 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard {
         bytes32 _tokenId,
         address _seller,
         address _buyer,
-        uint256 amount
+        uint256 amount,
+        address _familyAddress
     ) {
         LSP8Collection = LSP8Address;
         tokenId = _tokenId;
@@ -98,6 +101,7 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard {
         escrowStatus = status.OPEN;
         balance = amount;
         owner = msg.sender;
+        familyAddress = _familyAddress;
     }
 
     function parseRoyalty(

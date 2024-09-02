@@ -9,6 +9,8 @@ import {LSP8MarketplaceTrade} from "./LSP8MarketplaceTrade.sol";
 import {FamilyMarketPlaceEscrow} from "./MarketplaceEscrow.sol";
 import {Verifier} from "./MarketplaceVerifier.sol";
 import {TransferHelper} from "./libraries/transferHelpers.sol";
+import {Royalties} from "./libraries/Royalty.sol";
+import {Base} from "./common/Base.sol";
 
 error LSP8Marketplace__OnlyAdmin();
 
@@ -20,11 +22,14 @@ error LSP8Marketplace__OnlyAdmin();
  */
 
 contract LSP8Marketplace is
+    Base,
     LSP8MarketplacePrice,
     LSP8MarketplaceTrade,
     Verifier
 {
     using EnumerableSet for EnumerableSet.AddressSet;
+    mapping(address => mapping(address => mapping(bytes32 => uint256)))
+        private _lastPurchasePrice;
 
     enum CollectionType {
         Digital,
@@ -79,13 +84,16 @@ contract LSP8Marketplace is
     uint256 private nonce = 0;
 
     address placeholder;
-    address owner;
+    // address owner;
     address public admin;
 
     struct Trade {
         address seller;
         address buyer;
         address payable escrow;
+        uint256 price;
+        address asset;
+        bytes32 tokenId;
     }
 
     mapping(bytes32 => Trade) trades;
@@ -94,7 +102,7 @@ contract LSP8Marketplace is
 
     constructor(address _owner, address _admin, address _placeholder) {
         placeholder = _placeholder;
-        owner = _owner;
+        // owner = _owner;
         admin = _admin;
     }
 
@@ -103,10 +111,10 @@ contract LSP8Marketplace is
         _;
     }
 
-    modifier onlyOwner() {
-        require(msg.sender == owner, "ACCESS DENIED");
-        _;
-    }
+    // modifier onlyOwner() {
+    //     require(msg.sender == owner, "ACCESS DENIED");
+    //     _;
+    // }
 
     /**
      * @notice sets a new admin
@@ -329,7 +337,14 @@ contract LSP8Marketplace is
         _transferLSP8(LSP8Address, LSP8Owner, escrow, tokenId, false, 1);
         TransferHelper.safeTransferLYX(escrow, amount);
         // LSP8Owner.transfer(amount);
-        trades[tradeId] = Trade(LSP8Owner, msg.sender, payable(escrow));
+        trades[tradeId] = Trade(
+            LSP8Owner,
+            msg.sender,
+            payable(escrow),
+            amount,
+            LSP8Address,
+            tokenId
+        );
         nonce++;
         emit TradeInitiated(
             tradeId,
@@ -352,8 +367,8 @@ contract LSP8Marketplace is
         sendEnoughLYX(LSP8Address, tokenId)
         LSP8OnSale(LSP8Address, tokenId)
         allowFiat(LSP8Address, tokenId)
+        onlyOwner
     {
-        require(msg.sender == owner, "ACCESS DENIED");
         address collection = LSP8Address;
         bytes32 _tokenId = tokenId;
 
@@ -388,7 +403,14 @@ contract LSP8Marketplace is
         _removeLSP8Prices(collection, tokenId);
         _transferLSP8(collection, LSP8Owner, escrow, _tokenId, false, 1);
         // LSP8Owner.transfer(amount);
-        trades[tradeId] = Trade(LSP8Owner, _buyer, payable(escrow));
+        trades[tradeId] = Trade(
+            LSP8Owner,
+            _buyer,
+            payable(escrow),
+            amount,
+            collection,
+            _tokenId
+        );
         nonce++;
         emit TradeInitiated(
             tradeId,
@@ -430,7 +452,14 @@ contract LSP8Marketplace is
         _transferLSP8(LSP8Address, LSP8Owner, msg.sender, tokenId, false, 1);
         TransferHelper.safeTransferLYX(LSP8Owner, amount);
         // LSP8Owner.transfer(amount);
-        trades[tradeId] = Trade(LSP8Owner, msg.sender, payable(address(0)));
+        trades[tradeId] = Trade(
+            LSP8Owner,
+            msg.sender,
+            payable(address(0)),
+            amount,
+            LSP8Address,
+            tokenId
+        );
         nonce++;
         emit TradeInitiated(
             tradeId,
@@ -471,7 +500,14 @@ contract LSP8Marketplace is
         _removeLSP8Prices(LSP8Address, tokenId);
         _removeLSP8Sale(LSP8Address, tokenId);
         _transferLSP8(LSP8Address, LSP8Owner, buyer, tokenId, false, 1);
-        trades[tradeId] = Trade(LSP8Owner, buyer, payable(address(0)));
+        trades[tradeId] = Trade(
+            LSP8Owner,
+            buyer,
+            payable(address(0)),
+            amount,
+            LSP8Address,
+            tokenId
+        );
         nonce++;
         emit TradeInitiated(
             tradeId,
@@ -547,14 +583,27 @@ contract LSP8Marketplace is
         Trade memory trade = trades[tradeId];
         require(trade.buyer == msg.sender, "");
         verify(placeholder, uid, signature);
-        FamilyMarketPlaceEscrow(trade.escrow).release();
+        uint256 feeAmount = _calculateFee(trade.price);
+        uint256 lastPurchase = lastPurchasePrice(
+            trade.seller,
+            trade.asset,
+            trade.tokenId
+        );
+        FamilyMarketPlaceEscrow(trade.escrow).release(
+            feeAmount,
+            lastPurchase,
+            royaltiesThresholdPoints
+        );
+        _lastPurchasePrice[trade.buyer][trade.asset][trade.tokenId] = trades[
+            tradeId
+        ].price;
         emit Received(tradeId);
     }
 
     function confirmDigitalReceived(bytes32 tradeId) external {
         Trade memory trade = trades[tradeId];
         require(trade.buyer == msg.sender, "");
-        FamilyMarketPlaceEscrow(trade.escrow).release();
+        // FamilyMarketPlaceEscrow(trade.escrow).release();
         emit Received(tradeId);
     }
 
@@ -623,5 +672,85 @@ contract LSP8Marketplace is
         FamilyMarketPlaceEscrow(trade.escrow).settleFiat();
         emit Resolved(tradeId);
         emit ResolvedFiat(tradeId);
+    }
+
+    function _executeSale(
+        uint256 listingId,
+        address asset,
+        bytes32 tokenId,
+        address seller,
+        address buyer,
+        uint256 totalPaid
+    ) private {
+        (
+            uint256 royaltiesTotalAmount,
+            address[] memory royaltiesRecipients,
+            uint256[] memory royaltiesAmounts
+        ) = _calculateRoyalties(asset, totalPaid);
+        uint256 feeAmount = _calculateFee(totalPaid);
+        if (feeAmount + royaltiesTotalAmount > totalPaid) {
+            // revert FeesExceedTotalPaid(
+            //     totalPaid,
+            //     feeAmount,
+            //     royaltiesTotalAmount
+            // );
+        }
+        if (
+            totalPaid <= lastPurchasePrice(seller, asset, tokenId) &&
+            !Royalties.royaltiesPaymentEnforced(asset)
+        ) {
+            (bool paid, ) = seller.call{value: totalPaid - feeAmount}("");
+            if (!paid) {
+                // revert Unpaid(listingId, seller, totalPaid - feeAmount);
+            }
+        } else {
+            uint256 royaltiesRecipientsCount = royaltiesRecipients.length;
+            for (uint256 i = 0; i < royaltiesRecipientsCount; i++) {
+                if (royaltiesAmounts[i] > 0) {
+                    (bool royaltiesPaid, ) = royaltiesRecipients[i].call{
+                        value: royaltiesAmounts[i]
+                    }("");
+                    if (!royaltiesPaid) {
+                        // revert Unpaid(
+                        //     listingId,
+                        //     royaltiesRecipients[i],
+                        //     royaltiesAmounts[i]
+                        // );
+                    }
+                    // emit RoyaltiesPaid(
+                    //     listingId,
+                    //     asset,
+                    //     tokenId,
+                    //     royaltiesRecipients[i],
+                    //     royaltiesAmounts[i]
+                    // );
+                }
+            }
+            uint256 sellerAmount = totalPaid - feeAmount - royaltiesTotalAmount;
+            (bool paid, ) = seller.call{value: sellerAmount}("");
+            if (!paid) {
+                // revert Unpaid(listingId, seller, sellerAmount);
+            }
+        }
+        if (feeAmount > 0) {
+            // emit FeePaid(listingId, asset, tokenId, feeAmount);
+        }
+        ILSP8IdentifiableDigitalAsset(asset).transfer(
+            seller,
+            buyer,
+            tokenId,
+            false,
+            ""
+        );
+        _lastPurchasePrice[buyer][asset][tokenId] = totalPaid;
+        // emit Sale(listingId, asset, tokenId, seller, buyer, totalPaid);
+    }
+
+    function lastPurchasePrice(
+        address buyer,
+        address asset,
+        bytes32 tokenId
+    ) public view returns (uint256) {
+        return _lastPurchasePrice[buyer][asset][tokenId];
     }
 }

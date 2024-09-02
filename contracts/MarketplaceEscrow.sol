@@ -5,6 +5,8 @@ import {ILSP8IdentifiableDigitalAsset} from "@lukso/lsp-smart-contracts/contract
 
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {TransferHelper} from "./libraries/transferHelpers.sol";
+import {Royalties, RoyaltiesInfo} from "./libraries/Royalty.sol";
+import {Points} from "./libraries/Points.sol";
 
 /**
  * @title Family Escrow Contract
@@ -13,10 +15,10 @@ import {TransferHelper} from "./libraries/transferHelpers.sol";
 
 contract FamilyMarketPlaceEscrow is ReentrancyGuard {
     address owner;
-    address LSP8Collection;
+    address asset;
     bytes32 tokenId;
-    address seller;
-    address buyer;
+    address public seller;
+    address public buyer;
     uint256 balance;
 
     address familyAddress;
@@ -54,6 +56,12 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard {
 
     // event Transfer(string func, address sender, uint256 value, bytes data); // what data?
     event Action(string func, address sender, bytes data); // what data?
+
+    error RoyaltiesExceedThreshold(
+        uint32 royaltiesThresholdPoints,
+        uint256 totalPrice,
+        uint256 totalRoyalties
+    );
 
     // modifier itemExists(uint256 escId) {
     //     require(items[escId].timestamp != 0, "Escrow item does not exist.");
@@ -93,7 +101,7 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard {
         uint256 amount,
         address _familyAddress
     ) {
-        LSP8Collection = LSP8Address;
+        asset = LSP8Address;
         tokenId = _tokenId;
         seller = _seller;
         buyer = _buyer;
@@ -102,32 +110,6 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard {
         balance = amount;
         owner = msg.sender;
         familyAddress = _familyAddress;
-    }
-
-    function parseRoyalty(
-        bytes memory royalty
-    ) public pure returns (DecodedRoyalty memory royaltyInstance) {
-        require(royalty.length >= 20, "Royalty data is too short"); // Ensure the royalty bytes are long enough
-
-        // Extract the relevant bytes for addrValue and numValue
-        bytes14 addrBytes;
-        bytes12 numBytes;
-
-        // Extract bytes for addrValue (assuming the relevant 14 bytes start from index 0)
-        assembly {
-            addrBytes := mload(add(royalty, 20))
-        }
-        // Convert bytes14 to bytes32, then to uint256, and finally to address
-        royaltyInstance.addrValue = address(
-            uint160(uint256(bytes32(addrBytes)))
-        );
-
-        // Extract bytes for numValue (assuming the relevant 12 bytes start from index 14)
-        assembly {
-            numBytes := mload(add(royalty, 32))
-        }
-        // Convert bytes12 to bytes32, then to uint256, and finally to uint96
-        royaltyInstance.numValue = uint96(uint256(bytes32(numBytes)));
     }
 
     function getBuyerSeller() public view returns (address[2] memory) {
@@ -147,39 +129,68 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard {
         return escrowStatus;
     }
 
-    function release() public payable itemIsOpen onlyMarketplace nonReentrant {
+    function release(
+        uint256 feeAmount,
+        uint256 lastPurchasePrice,
+        uint32 royaltiesThresholdPoints
+    ) public payable itemIsOpen onlyMarketplace nonReentrant {
         require(
             tx.origin == buyer,
             "Only the buyer has the right to finalize trade"
         );
+
+        (
+            uint256 royaltiesTotalAmount,
+            address[] memory royaltiesRecipients,
+            uint256[] memory royaltiesAmounts
+        ) = _calculateRoyalties(balance, royaltiesThresholdPoints);
+
+        if (
+            balance <= lastPurchasePrice &&
+            !Royalties.royaltiesPaymentEnforced(asset)
+        ) {
+            (bool paid, ) = seller.call{value: balance - feeAmount}("");
+            // if (!paid) {
+            //     revert Unpaid(listingId, seller, balance - feeAmount);
+            // }
+        } else {
+            uint256 royaltiesRecipientsCount = royaltiesRecipients.length;
+            for (uint256 i = 0; i < royaltiesRecipientsCount; i++) {
+                if (royaltiesAmounts[i] > 0) {
+                    (bool royaltiesPaid, ) = royaltiesRecipients[i].call{
+                        value: royaltiesAmounts[i]
+                    }("");
+                    // if (!royaltiesPaid) {
+                    //     revert Unpaid(
+                    //         listingId,
+                    //         royaltiesRecipients[i],
+                    //         royaltiesAmounts[i]
+                    //     );
+                    // }
+                    // emit RoyaltiesPaid(
+                    //     listingId,
+                    //     asset,
+                    //     tokenId,
+                    //     royaltiesRecipients[i],
+                    //     royaltiesAmounts[i]
+                    // );
+                }
+            }
+            uint256 sellerAmount = balance - feeAmount - royaltiesTotalAmount;
+            (bool paid, ) = seller.call{value: sellerAmount}("");
+            // if (!paid) {
+            //     revert Unpaid(listingId, seller, sellerAmount);
+            // }
+        }
+
         TransferHelper.safeTransferLSP8(
-            LSP8Collection,
+            asset,
             address(this),
             buyer,
             tokenId,
             true,
             "0x"
         );
-
-        bytes memory royalty = ILSP8IdentifiableDigitalAsset(LSP8Collection)
-            .getData(
-                0xc0569ca6c9180acc2c3590f36330a36ae19015a19f4e85c28a7631e3317e6b9d
-            );
-
-        uint256 payment = balance;
-
-        if (royalty.length > 0) {
-            DecodedRoyalty memory royaltyParts = parseRoyalty(royalty);
-            uint256 royaltyFee = ((royaltyParts.numValue / 1000) * balance) /
-                100;
-            TransferHelper.safeTransferLYX(royaltyParts.addrValue, royaltyFee);
-
-            payment -= royaltyFee;
-        }
-
-        uint256 fee = (balance * (platformFee / 100)) / 100;
-        TransferHelper.safeTransferLYX(familyAddress, fee);
-        TransferHelper.safeTransferLYX(seller, payment - fee);
         escrowStatus = status.CONFIRMED;
     }
 
@@ -191,7 +202,7 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard {
         nonReentrant
     {
         TransferHelper.safeTransferLSP8(
-            LSP8Collection,
+            asset,
             address(this),
             buyer,
             tokenId,
@@ -215,7 +226,7 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard {
 
     function dissolve() external onlyMarketplace nonReentrant {
         TransferHelper.safeTransferLSP8(
-            LSP8Collection,
+            asset,
             address(this),
             seller,
             tokenId,
@@ -228,7 +239,7 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard {
 
     function dissolveFiat() external onlyMarketplace nonReentrant {
         TransferHelper.safeTransferLSP8(
-            LSP8Collection,
+            asset,
             address(this),
             seller,
             tokenId,
@@ -240,7 +251,7 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard {
 
     function settle() external onlyMarketplace nonReentrant {
         TransferHelper.safeTransferLSP8(
-            LSP8Collection,
+            asset,
             address(this),
             buyer,
             tokenId,
@@ -253,7 +264,7 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard {
 
     function settleFiat() external onlyMarketplace nonReentrant {
         TransferHelper.safeTransferLSP8(
-            LSP8Collection,
+            asset,
             address(this),
             buyer,
             tokenId,
@@ -267,7 +278,7 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard {
     function cancel() external onlyMarketplace nonReentrant {
         require(escrowStatus == status.OPEN, "Item Already Marked Sent");
         TransferHelper.safeTransferLSP8(
-            LSP8Collection,
+            asset,
             address(this),
             seller,
             tokenId,
@@ -281,7 +292,7 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard {
     function cancelFiat() external onlyMarketplace nonReentrant {
         require(escrowStatus == status.OPEN, "Item Already Marked Sent");
         TransferHelper.safeTransferLSP8(
-            LSP8Collection,
+            asset,
             address(this),
             seller,
             tokenId,
@@ -289,5 +300,41 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard {
             "0x"
         );
         escrowStatus = status.CANCELED;
+    }
+
+    function _calculateRoyalties(
+        uint256 totalPrice,
+        uint32 royaltiesThresholdPoints
+    )
+        internal
+        view
+        returns (
+            uint256 totalAmount,
+            address[] memory recipients,
+            uint256[] memory amounts
+        )
+    {
+        totalAmount = 0;
+        RoyaltiesInfo[] memory royalties = Royalties.royalties(asset);
+        recipients = new address[](royalties.length);
+        amounts = new uint256[](royalties.length);
+        uint256 count = royalties.length;
+        for (uint256 i = 0; i < count; i++) {
+            assert(Points.isValid(royalties[i].points));
+            uint256 amount = Points.realize(totalPrice, royalties[i].points);
+            recipients[i] = royalties[i].recipient;
+            amounts[i] = amount;
+            totalAmount += amount;
+        }
+        if (
+            (royaltiesThresholdPoints != 0) &&
+            (totalAmount > Points.realize(totalPrice, royaltiesThresholdPoints))
+        ) {
+            revert RoyaltiesExceedThreshold(
+                royaltiesThresholdPoints,
+                totalPrice,
+                totalAmount
+            );
+        }
     }
 }

@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: CC0-1.0
 pragma solidity ^0.8.0;
 
+import {ILSP8IdentifiableDigitalAsset} from "@lukso/lsp-smart-contracts/contracts/LSP8IdentifiableDigitalAsset/ILSP8IdentifiableDigitalAsset.sol";
+
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {TransferHelper} from "./libraries/transferHelpers.sol";
+import {Royalties, RoyaltiesInfo} from "./libraries/Royalty.sol";
+import {Points} from "./libraries/Points.sol";
 
 /**
  * @title Family Escrow Contract
@@ -11,17 +15,27 @@ import {TransferHelper} from "./libraries/transferHelpers.sol";
 
 contract FamilyMarketPlaceEscrow is ReentrancyGuard {
     address owner;
-    address LSP8Collection;
+    address asset;
     bytes32 tokenId;
-    address seller;
-    address buyer;
+    address public seller;
+    address public buyer;
     uint256 balance;
+
+    address familyAddress;
     // address OGminter;
     uint256 timestamp;
     uint256 escrowId;
     status escrowStatus;
     string trackingID;
     bool public isEscrow = true;
+
+    uint8 platformFee = 250; // fee/100 would give the percentage
+
+    struct DecodedRoyalty {
+        // bytes4 byteValue;
+        address addrValue;
+        uint256 numValue;
+    }
 
     enum status {
         OPEN, // 0, trade is ongoing
@@ -42,6 +56,12 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard {
 
     // event Transfer(string func, address sender, uint256 value, bytes data); // what data?
     event Action(string func, address sender, bytes data); // what data?
+
+    error RoyaltiesExceedThreshold(
+        uint32 royaltiesThresholdPoints,
+        uint256 totalPrice,
+        uint256 totalRoyalties
+    );
 
     // modifier itemExists(uint256 escId) {
     //     require(items[escId].timestamp != 0, "Escrow item does not exist.");
@@ -67,6 +87,8 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard {
      * @param _seller Address of the LSP8 sender (aka from).
      * @param _buyer Address of the LSP8 receiver (aka to).
      * @param amount Sale price of asset.
+     * @param _familyAddress address of the fee receiver
+     *
      *
      * @notice this method can only be called once Buyer commits LYX payment
      */
@@ -76,9 +98,10 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard {
         bytes32 _tokenId,
         address _seller,
         address _buyer,
-        uint256 amount
+        uint256 amount,
+        address _familyAddress
     ) {
-        LSP8Collection = LSP8Address;
+        asset = LSP8Address;
         tokenId = _tokenId;
         seller = _seller;
         buyer = _buyer;
@@ -86,6 +109,7 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard {
         escrowStatus = status.OPEN;
         balance = amount;
         owner = msg.sender;
+        familyAddress = _familyAddress;
     }
 
     function getBuyerSeller() public view returns (address[2] memory) {
@@ -105,20 +129,68 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard {
         return escrowStatus;
     }
 
-    function release() public payable itemIsOpen onlyMarketplace nonReentrant {
+    function release(
+        uint256 feeAmount,
+        uint256 lastPurchasePrice,
+        uint32 royaltiesThresholdPoints
+    ) public payable itemIsOpen onlyMarketplace nonReentrant {
         require(
             tx.origin == buyer,
             "Only the buyer has the right to finalize trade"
         );
+
+        (
+            uint256 royaltiesTotalAmount,
+            address[] memory royaltiesRecipients,
+            uint256[] memory royaltiesAmounts
+        ) = _calculateRoyalties(balance, royaltiesThresholdPoints);
+
+        if (
+            balance <= lastPurchasePrice &&
+            !Royalties.royaltiesPaymentEnforced(asset)
+        ) {
+            (bool paid, ) = seller.call{value: balance - feeAmount}("");
+            // if (!paid) {
+            //     revert Unpaid(listingId, seller, balance - feeAmount);
+            // }
+        } else {
+            uint256 royaltiesRecipientsCount = royaltiesRecipients.length;
+            for (uint256 i = 0; i < royaltiesRecipientsCount; i++) {
+                if (royaltiesAmounts[i] > 0) {
+                    (bool royaltiesPaid, ) = royaltiesRecipients[i].call{
+                        value: royaltiesAmounts[i]
+                    }("");
+                    // if (!royaltiesPaid) {
+                    //     revert Unpaid(
+                    //         listingId,
+                    //         royaltiesRecipients[i],
+                    //         royaltiesAmounts[i]
+                    //     );
+                    // }
+                    // emit RoyaltiesPaid(
+                    //     listingId,
+                    //     asset,
+                    //     tokenId,
+                    //     royaltiesRecipients[i],
+                    //     royaltiesAmounts[i]
+                    // );
+                }
+            }
+            uint256 sellerAmount = balance - feeAmount - royaltiesTotalAmount;
+            (bool paid, ) = seller.call{value: sellerAmount}("");
+            // if (!paid) {
+            //     revert Unpaid(listingId, seller, sellerAmount);
+            // }
+        }
+
         TransferHelper.safeTransferLSP8(
-            LSP8Collection,
+            asset,
             address(this),
             buyer,
             tokenId,
             true,
             "0x"
         );
-        TransferHelper.safeTransferLYX(seller, balance);
         escrowStatus = status.CONFIRMED;
     }
 
@@ -130,7 +202,7 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard {
         nonReentrant
     {
         TransferHelper.safeTransferLSP8(
-            LSP8Collection,
+            asset,
             address(this),
             buyer,
             tokenId,
@@ -154,7 +226,7 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard {
 
     function dissolve() external onlyMarketplace nonReentrant {
         TransferHelper.safeTransferLSP8(
-            LSP8Collection,
+            asset,
             address(this),
             seller,
             tokenId,
@@ -167,7 +239,7 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard {
 
     function dissolveFiat() external onlyMarketplace nonReentrant {
         TransferHelper.safeTransferLSP8(
-            LSP8Collection,
+            asset,
             address(this),
             seller,
             tokenId,
@@ -179,7 +251,7 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard {
 
     function settle() external onlyMarketplace nonReentrant {
         TransferHelper.safeTransferLSP8(
-            LSP8Collection,
+            asset,
             address(this),
             buyer,
             tokenId,
@@ -192,7 +264,7 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard {
 
     function settleFiat() external onlyMarketplace nonReentrant {
         TransferHelper.safeTransferLSP8(
-            LSP8Collection,
+            asset,
             address(this),
             buyer,
             tokenId,
@@ -206,7 +278,7 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard {
     function cancel() external onlyMarketplace nonReentrant {
         require(escrowStatus == status.OPEN, "Item Already Marked Sent");
         TransferHelper.safeTransferLSP8(
-            LSP8Collection,
+            asset,
             address(this),
             seller,
             tokenId,
@@ -220,7 +292,7 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard {
     function cancelFiat() external onlyMarketplace nonReentrant {
         require(escrowStatus == status.OPEN, "Item Already Marked Sent");
         TransferHelper.safeTransferLSP8(
-            LSP8Collection,
+            asset,
             address(this),
             seller,
             tokenId,
@@ -228,5 +300,41 @@ contract FamilyMarketPlaceEscrow is ReentrancyGuard {
             "0x"
         );
         escrowStatus = status.CANCELED;
+    }
+
+    function _calculateRoyalties(
+        uint256 totalPrice,
+        uint32 royaltiesThresholdPoints
+    )
+        internal
+        view
+        returns (
+            uint256 totalAmount,
+            address[] memory recipients,
+            uint256[] memory amounts
+        )
+    {
+        totalAmount = 0;
+        RoyaltiesInfo[] memory royalties = Royalties.royalties(asset);
+        recipients = new address[](royalties.length);
+        amounts = new uint256[](royalties.length);
+        uint256 count = royalties.length;
+        for (uint256 i = 0; i < count; i++) {
+            assert(Points.isValid(royalties[i].points));
+            uint256 amount = Points.realize(totalPrice, royalties[i].points);
+            recipients[i] = royalties[i].recipient;
+            amounts[i] = amount;
+            totalAmount += amount;
+        }
+        if (
+            (royaltiesThresholdPoints != 0) &&
+            (totalAmount > Points.realize(totalPrice, royaltiesThresholdPoints))
+        ) {
+            revert RoyaltiesExceedThreshold(
+                royaltiesThresholdPoints,
+                totalPrice,
+                totalAmount
+            );
+        }
     }
 }
